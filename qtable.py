@@ -12,7 +12,6 @@ num_episodes = 2000
 #reward list
 rList = []
 for i in range(num_episodes):
-    
     #Reset environment and get the first episode
     s = env.reset()
     rAll = 0
@@ -21,7 +20,6 @@ for i in range(num_episodes):
 
     #The Q-table learning loop
     while j < 99:
-        
         j += 1
         #Choose an action with maximum reward (which some stochastic noise)
         a = np.argmax(Q[s,:] + np.random.randn(1,env.action_space.n)*(1./(i+1)))
