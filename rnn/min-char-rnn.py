@@ -3,9 +3,15 @@ Minimum character level RNN model
 """
 
 import numpy as np
+import sys
+import pdb
 
-data = open('input.txt', 'r').read()
+#data = open('input.txt', 'r').read()
+filepath = sys.argv[1]
+print 'file %s ' %(filepath)
+data = open(filepath, 'r').read()
 chars = list(set(data))
+pdb.set_trace()
 #print set(data)
 #print "This is the chars"
 #print chars
@@ -51,7 +57,7 @@ def lossFun(inputs, targets, hprev):
     for t in xrange(len(inputs)):
         #one hot encoding of the input
         xs[t] = np.zeros((vocab_size, 1))
-        xs[inputs[t]] = 1
+        xs[t][inputs[t]] = 1
         hs[t] = np.tanh(np.dot(Wxh, xs[t]) + np.dot(Whh, hs[t-1]) + bh)
         ys[t] = np.dot(Why, hs[t]) + by
         #softmax over the output
@@ -67,40 +73,36 @@ def lossFun(inputs, targets, hprev):
     dWxh, dWhh, dWhy = np.zeros_like(Wxh), np.zeros_like(Whh), np.zeros_like(Why)
     dbh, dby = np.zeros_like(bh), np.zeros_like(by)
     dhnext = np.zeros_like(hs[0])
+
+    # How to visually think about the back propagation at each stage!
+    # for weight derivatives think from the weight's POV (i know it sounds
+    # obvious, but it really helps!, trust me)
+    # for input derivates think from the POV of all input - ie imagine it
+    # affecting all the outputs and as a consequence it's derivative w.r.t to
+    # the final output is dependent on the sum of errors in all the immpediate
+    # outputs that this neuron touchs, and the chain rules gives us the needed
+    # recursive relation ship, so we can only think about the error
+    # propagation one stage at a time!
+    # ys = Why*hs[t] + by
+    # | W11 W12 W13 | * | h1 |  = | W11*h1 + W12*h2 + W13*h3 |
+    # | W21 W22 W23 |   | h2 |  = | W21*h1 + W22*h2 + W23*h3 |
+    # | W31 W32 W33 |   | h3 |  = | W31*h1 + W32*h2 + W33*h3 |
+    # df/dwhy = df/dy * dy/dwhy
+    # df/dwhy = df/dy * | h1 h2 h3 |
+    # L-1,i-------wij------L,j
+    # Lj = Sigma(j,i=0,sizeof(L-1)-1)
+    # dwhy = dy * hT
+    #      = | y1 | * | h1 h2 h3| <= | y1h1 y1h2 y1h3 |
+    #        | y2 |                  | y2h1 y2h2 y2h3 |
+    #        | y3 |                  | y3h1 y3h2 y3h3 |
+    # error for softmax cross entropy function i.e
+    # -np.log(p_target) output function is just p-1
     for t in reversed(xrange(len(inputs))):
-
-        # How to visually think about the back propagation at each stage!
-        # for weight derivatives think from the weight's POV (i know it sounds
-        # obvious, but it really helps!, trust me)
-        # for input derivates think from the POV of all input - ie imagine it
-        # affecting all the outputs and as a consequence it's derivative w.r.t to
-        # the final output is dependent on the sum of errors in all the immpediate
-        # outputs that this neuron touchs, and the chain rules gives us the needed
-        # recursive relation ship, so we can only think about the error
-        # propagation one stage at a time!
-
-        # ys = Why*hs[t] + by
-        # | W11 W12 W13 | * | h1 |  = | W11*h1 + W12*h2 + W13*h3 |
-        # | W21 W22 W23 |   | h2 |  = | W21*h1 + W22*h2 + W23*h3 |
-        # | W31 W32 W33 |   | h3 |  = | W31*h1 + W32*h2 + W33*h3 |
-
-        # df/dwhy = df/dy * dy/dwhy
-        # df/dwhy = df/dy * | h1 h2 h3 |
-
-        # L-1,i-------wij------L,j
-        # Lj = Sigma(j,i=0,sizeof(L-1)-1)
-        # dwhy = dy * hT
-        #      = | y1 | * | h1 h2 h3| <= | y1h1 y1h2 y1h3 |
-        #        | y2 |                  | y2h1 y2h2 y2h3 |
-        #        | y3 |                  | y3h1 y3h2 y3h3 |
-
-        # error for softmax cross entropy function i.e
-        # -np.log(p_target) output function is just p-1
-        dy = np.copy(p[t]) 
+        dy = np.copy(ps[t]) 
         dy[targets[t]] -= 1
         dWhy += np.dot(dy, hs[t].T)
         dby += dy
-        dh = np.dot(Why.T, dy) + hnext #backprop into h
+        dh = np.dot(Why.T, dy) + dhnext #backprop into h
         dhraw = (1-hs[t]*hs[t]) * dh #backprop through tanh nonlinearity
         dbh += dhraw
         dWxh += np.dot(dhraw, xs[t].T)
@@ -109,7 +111,7 @@ def lossFun(inputs, targets, hprev):
 
     #clip to mitigate exploding gradients
     for dparam in [dWhy, dWhh, dWxh, dby, dbh]:
-            np.clip(daram, -5, 5, out=dparam) 
+            np.clip(dparam, -5, 5, out=dparam) 
 
     return loss, dWxh, dWhh, dWhy, dbh, dby, hs[len(inputs)-1]
 
@@ -137,5 +139,38 @@ def sample(h, seed_x, n):
 #Main loop
 n, p = 0, 0
 mWxh, mWhh, mWhy = np.zeros_like(Wxh), np.zeros_like(Whh), np.zeros_like(Why)
-mbh, mby = np.zeros_like(bh), mp.zeros_like(by)
+mbh, mby = np.zeros_like(bh), np.zeros_like(by)
 smooth_loss = -np.log(1.0/vocab_size)*seq_length
+while True:
+
+    if p+seq_length+1 >= len(data) or n == 0:
+        #reset the counter
+        hprev = np.zeros((hidden_size,1))
+        p = 0
+    
+    inputs = [char_to_ix[ch] for ch in data[p:p+seq_length]]
+    targets = [char_to_ix[ch] for ch in data[p+1:p+1+seq_length]]
+
+    sample_length = 200
+    #sample the state of the machine
+    if n%100 == 0:
+        sample_ix = sample(hprev, inputs[0], sample_length)
+        txt = ''.join(ix_to_char[ix] for ix in sample_ix)
+        print '%d:-----\n %s ----\n' %(n, txt)
+
+    loss, dWxh, dWhh, dWhy, dbh, dby, hprev = lossFun(inputs, targets, hprev)
+
+    smooth_loss = smooth_loss * 0.999 + loss * 0.001
+    
+    if n%100 == 0: print 'iter %d: loss %f' %(n, smooth_loss)
+
+    #perform adagrad update
+    for param, dparam, mem in zip([Wxh, Whh, Why, bh, by],
+                                  [dWxh, dWhh, dWhy, dbh, dby],
+                                  [mWxh, mWhh, mWhy, mbh, mby]):
+        mem += dparam * dparam
+
+        param += -learning_rate * dparam / np.sqrt(mem + 1e-8)
+
+    p += seq_length
+    n += 1
